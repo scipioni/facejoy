@@ -1,3 +1,6 @@
 .venv
 facejoy.egg-info
 facejoy/__pycache__
+.python-version
+e2e.log
+uv.lock
