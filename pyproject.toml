@@ -1,0 +1,33 @@
+[project]
+name = "facejoy"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Stefano Scipioni", email = "scipio.it@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "mediapipe>=0.10.21",
+    "numpy>=1.26.4",
+    "opencv-python>=4.11.0.86",
+    "pyautogui>=0.9.54",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.1.0",
+    "black>=23.0",
+    "mypy>=1.0",
+    "pytest>=7.0",
+    "ipython>=8.0",
+]
+
+
+[project.scripts]
+facejoy = "facejoy.main:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
