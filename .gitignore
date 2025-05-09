@@ -1,2 +1,3 @@
 .venv
 facejoy.egg-info
+facejoy/__pycache__
