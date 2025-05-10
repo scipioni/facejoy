@@ -6,8 +6,8 @@ import math
 from typing import Tuple, List, Optional
 
 # Constants
-MOUSE_SMOOTHING = 0.5  # Lower is smoother
-MOUSE_SCALE = 2.0  # How much to scale face movement to mouse movement
+MOUSE_SMOOTHING = 0.1  # Lower is smoother
+MOUSE_SCALE = 1.0  # How much to scale face movement to mouse movement
 MOUSE_DEADZONE = 0.1  # Minimal movement required to move mouse
 MOUTH_OPEN_THRESHOLD = 0.4  # Ratio of mouth height to width to trigger click
 SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
@@ -42,16 +42,30 @@ class FaceVisualizer:
         self.mp_face_mesh = mp.solutions.face_mesh
         self.mp_drawing = mp.solutions.drawing_utils
         self.drawing_spec = self.mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+        self.drawing_styles = mp.solutions.drawing_styles
 
     def draw(self, image: np.ndarray, face_landmarks) -> np.ndarray:
         """Draw face landmarks on the image"""
+        # self.mp_drawing.draw_landmarks(
+        #     image=image,
+        #     landmark_list=face_landmarks,
+        #     connections=self.mp_face_mesh.FACEMESH_TESSELATION, #FACEMESH_CONTOURS,
+        #     landmark_drawing_spec=self.drawing_spec,
+        #     #connection_drawing_spec=self.drawing_spec,
+        #     connection_drawing_spec=self.drawing_styles.get_default_face_mesh_tesselation_style()
+        # )
         self.mp_drawing.draw_landmarks(
-            image=image,
-            landmark_list=face_landmarks,
-            connections=self.mp_face_mesh.FACEMESH_CONTOURS,
-            landmark_drawing_spec=self.drawing_spec,
-            connection_drawing_spec=self.drawing_spec,
-        )
+          image=image,
+          landmark_list=face_landmarks,
+          connections=self.mp_face_mesh.FACEMESH_CONTOURS,
+          landmark_drawing_spec=None,
+          connection_drawing_spec=self.drawing_styles.get_default_face_mesh_contours_style())
+        # self.mp_drawing.draw_landmarks(
+        #   image=image,
+        #   landmark_list=face_landmarks,
+        #   connections=self.mp_face_mesh.FACEMESH_IRISES,
+        #   landmark_drawing_spec=None,
+        #   connection_drawing_spec=self.drawing_styles.get_default_face_mesh_iris_connections_style())
         return image
 
 
@@ -73,7 +87,7 @@ class MouseController:
 
         # Convert to screen coordinates (flip y-axis)
         screen_x = x
-        screen_y = 1 - y
+        screen_y = y #1 - y
 
         return screen_x, screen_y
 
@@ -120,15 +134,15 @@ class MouseController:
             )
         else:
             smoothed_x, smoothed_y = screen_x, screen_y
-
         # Move mouse
-        pyautogui.moveTo(smoothed_x, smoothed_y)
+        pyautogui.moveTo(smoothed_x, smoothed_y, duration=0.0, logScreenshot=False, _pause=False)
         self.prev_mouse_pos = (smoothed_x, smoothed_y)
 
         # Check mouth state for click
         _, is_open = self.get_mouth_state(face_landmarks)
 
         if is_open and not self.click_triggered:
+            print("Mouth is open")
             pyautogui.click()
             self.click_triggered = True
         elif not is_open:
