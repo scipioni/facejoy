@@ -1,26 +1,186 @@
-import cv2
-import numpy as np
-import mediapipe as mp
-import pyautogui
 import math
-from typing import Tuple, List, Optional
+from typing import Optional
 
-# Constants
-MOUSE_SMOOTHING = 0.1  # Lower is smoother
-MOUSE_SCALE = 1.0  # How much to scale face movement to mouse movement
-MOUSE_DEADZONE = 0.1  # Minimal movement required to move mouse
-MOUTH_OPEN_THRESHOLD = 0.4  # Ratio of mouth height to width to trigger click
-SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
-# Constants for blink detection
+import cv2
+import mediapipe as mp
+import numpy as np
+import time
+
+from .mouse import MouseController
+
 RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144]  # MediaPipe landmarks for right eye
 LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380]  # MediaPipe landmarks for left eye
-BLINK_RATIO_THRESHOLD = 5.0  # Adjust this based on your testing
+RIGHT_EYE = [
+    33,
+    7,
+    163,
+    144,
+    145,
+    153,
+    154,
+    155,
+    133,
+    173,
+    157,
+    158,
+    159,
+    160,
+    161,
+    246,
+]
+LEFT_EYE = [
+    362,
+    382,
+    381,
+    380,
+    374,
+    373,
+    390,
+    249,
+    263,
+    466,
+    388,
+    387,
+    386,
+    385,
+    384,
+    398,
+]
+BLINK_RATIO_THRESHOLD = 18
+BLINK_DETECTION_INTERVAL = 0.5
+GREEN_COLOR = (86, 241, 13)
+RED_COLOR = (30, 46, 209)
 
 
-class FaceDetector:
+def on_trackbar(val):
+    pass  # We'll update this later
+
+
+class FaceVisualizer:
+    """Handles visualization of face landmarks"""
+
+    def __init__(self):
+        self.mp_face_mesh = mp.solutions.face_mesh
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.drawing_spec = self.mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+        self.drawing_spec_tesselate = self.mp_drawing.DrawingSpec(
+            color=(160, 160, 160), thickness=1, circle_radius=1
+        )
+        self.drawing_styles = mp.solutions.drawing_styles
+        self.face_landmarks = []
+        self.right_blink = False
+        self.left_blink = False
+        self.right_ear = 0.0
+        self.left_ear = 0.0
+        self.blink_ratio_threshold = int(BLINK_RATIO_THRESHOLD)
+        cv2.namedWindow("Parameters")
+        cv2.createTrackbar(
+            "blink", "Parameters", self.blink_ratio_threshold, 100, on_trackbar
+        )
+
+    def draw(self, image: np.ndarray, face_landmarks: np.ndarray) -> np.ndarray:
+        """Draw face landmarks on the image"""
+        self.face_landmarks = face_landmarks
+        self.blink_ratio_threshold = float(
+            cv2.getTrackbarPos("blink", "Parameters") / 100.0
+        )
+        self.mp_drawing.draw_landmarks(
+            image=image,
+            landmark_list=face_landmarks,
+            connections=self.mp_face_mesh.FACEMESH_TESSELATION,
+            landmark_drawing_spec=None,
+            connection_drawing_spec=self.drawing_spec_tesselate,
+        )
+        # self.mp_drawing.draw_landmarks(
+        #     image=image,
+        #     landmark_list=self.face_landmarks,
+        #     connections=self.mp_face_mesh.FACEMESH_CONTOURS,
+        #     landmark_drawing_spec=None,
+        #     connection_drawing_spec=self.drawing_styles.get_default_face_mesh_contours_style(),
+        # )
+        # self.mp_drawing.draw_landmarks(
+        #   image=image,
+        #   landmark_list=face_landmarks,
+        #   connections=self.mp_face_mesh.FACEMESH_IRISES,
+        #   landmark_drawing_spec=None,
+        #   connection_drawing_spec=self.drawing_styles.get_default_face_mesh_iris_connections_style())
+
+        cv2.putText(
+            image,
+            f"Right EAR: {self.right_ear:.2f}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 255),
+            2,
+        )
+        cv2.putText(
+            image,
+            f"Left EAR: {self.left_ear:.2f}",
+            (10, 60),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.7,
+            (0, 0, 255),
+            2,
+        )
+
+        self._draw_eye(RIGHT_EYE, image, self.face_landmarks)
+        self._draw_eye(LEFT_EYE, image, self.face_landmarks)
+        # self.draw_eye_landmarks(image, face_landmarks, RIGHT_EYE, GREEN_COLOR)
+        # if self.right_blink:
+        #     self._draw_irish(RIGHT_EYE_INDICES, image, self.face_landmarks)
+        if self.left_blink:
+            self._draw_irish(LEFT_EYE_INDICES, image, self.face_landmarks)
+        return image
+
+    def _draw_eye(self, idxx, image: np.ndarray, face_landmarks: np.ndarray):
+        h, w = image.shape[:2]
+
+        eye_points = [
+            (self.face_landmarks.landmark[i].x, self.face_landmarks.landmark[i].y)
+            for i in idxx
+        ]
+        center_x = sum([p[0] for p in eye_points]) / len(eye_points)
+        center_y = sum([p[1] for p in eye_points]) / len(eye_points)
+        zoom = 1
+        for p in eye_points:
+            cv2.circle(
+                image,
+                (
+                    int(w * (center_x + (p[0] - center_x) * zoom)),
+                    int(h * (center_y + (p[1] - center_y) * zoom)),
+                ),
+                1,
+                (0, 255, 255),
+                -1,
+            )
+
+    def _draw_irish(self, idxx, image: np.ndarray, face_landmarks: np.ndarray):
+        h, w = image.shape[:2]
+
+        eye_points = [
+            (self.face_landmarks.landmark[i].x, self.face_landmarks.landmark[i].y)
+            for i in idxx
+        ]
+
+        center_x = sum([p[0] for p in eye_points]) / len(eye_points)
+        center_y = sum([p[1] for p in eye_points]) / len(eye_points)
+        cv2.circle(image, (int(center_x * w), int(center_y * h)), 10, (0, 255, 0), -1)
+
+    def show(self, image, zoom=2.0):
+        cv2.imshow("Parameters", cv2.resize(image, (0, 0), fx=zoom, fy=zoom))
+
+        # Exit on 'q' key
+        if cv2.waitKey(5) & 0xFF == ord("q"):
+            return False
+        return True
+
+
+class FaceDetector(FaceVisualizer):
     """Handles face detection using MediaPipe"""
 
     def __init__(self):
+        super().__init__()
         self.mp_face_mesh = mp.solutions.face_mesh
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=1,
@@ -28,31 +188,16 @@ class FaceDetector:
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
         )
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.drawing_spec = self.mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
-        self.right_blink = False
-        self.left_blink = False
+        self.last_blink_time = 0
 
     def detect(self, image: np.ndarray) -> Optional[np.ndarray]:
         """Detect face landmarks in the image"""
         results = self.face_mesh.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         if not results.multi_face_landmarks:
             return None
-        face_landmarks = results.multi_face_landmarks[0]
-        self._detect_blinks(face_landmarks)
-        return face_landmarks
-
-    def _calculate_eye_aspect_ratio(self, eye_landmarks):
-        # Compute the vertical distances
-        vertical1 = math.dist(eye_landmarks[1], eye_landmarks[5])
-        vertical2 = math.dist(eye_landmarks[2], eye_landmarks[4])
-
-        # Compute the horizontal distance
-        horizontal = math.dist(eye_landmarks[0], eye_landmarks[3])
-
-        # Calculate eye aspect ratio
-        ear = (vertical1 + vertical2) / (2.0 * horizontal)
-        return ear
+        self.face_landmarks = results.multi_face_landmarks[0]
+        self._detect_blinks(self.face_landmarks)
+        return self.face_landmarks
 
     def _detect_blinks(self, face_landmarks):
         right_eye_landmarks = [
@@ -67,168 +212,33 @@ class FaceDetector:
         self.left_ear = self._calculate_eye_aspect_ratio(left_eye_landmarks)
 
         # Detect blinks
-        self.right_blink = self.right_ear < (1 / BLINK_RATIO_THRESHOLD)
-        self.left_blink = self.left_ear < (1 / BLINK_RATIO_THRESHOLD)
-
-
-class FaceVisualizer:
-    """Handles visualization of face landmarks"""
-
-    def __init__(self):
-        self.mp_face_mesh = mp.solutions.face_mesh
-        self.mp_drawing = mp.solutions.drawing_utils
-        self.drawing_spec = self.mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
-        self.drawing_styles = mp.solutions.drawing_styles
-
-    def draw(self, image: np.ndarray, face_landmarks, face: FaceDetector) -> np.ndarray:
-        """Draw face landmarks on the image"""
-        # self.mp_drawing.draw_landmarks(
-        #     image=image,
-        #     landmark_list=face_landmarks,
-        #     connections=self.mp_face_mesh.FACEMESH_TESSELATION, #FACEMESH_CONTOURS,
-        #     landmark_drawing_spec=self.drawing_spec,
-        #     #connection_drawing_spec=self.drawing_spec,
-        #     connection_drawing_spec=self.drawing_styles.get_default_face_mesh_tesselation_style()
-        # )
-        self.mp_drawing.draw_landmarks(
-            image=image,
-            landmark_list=face_landmarks,
-            connections=self.mp_face_mesh.FACEMESH_CONTOURS,
-            landmark_drawing_spec=None,
-            connection_drawing_spec=self.drawing_styles.get_default_face_mesh_contours_style(),
-        )
-        # self.mp_drawing.draw_landmarks(
-        #   image=image,
-        #   landmark_list=face_landmarks,
-        #   connections=self.mp_face_mesh.FACEMESH_IRISES,
-        #   landmark_drawing_spec=None,
-        #   connection_drawing_spec=self.drawing_styles.get_default_face_mesh_iris_connections_style())
-
-        cv2.putText(
-            image,
-            f"Right EAR: {face.right_ear:.2f}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 0, 255),
-            2,
-        )
-        cv2.putText(
-            image,
-            f"Left EAR: {face.left_ear:.2f}",
-            (10, 60),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 0, 255),
-            2,
-        )
-
-        if face.right_blink:
-            self._draw_eye(RIGHT_EYE_INDICES, image, face_landmarks)
-        if face.left_blink:
-            self._draw_eye(LEFT_EYE_INDICES, image, face_landmarks)
-        return image
-
-    def _draw_eye(self, idxx, image: np.ndarray, face_landmarks: np.ndarray):
-        h, w = image.shape[:2]
-
-        eye_points = [
-            (face_landmarks.landmark[i].x, face_landmarks.landmark[i].y) for i in idxx
-        ]
-
-        center_x = sum([p[0] for p in eye_points]) / len(eye_points)
-        center_y = sum([p[1] for p in eye_points]) / len(eye_points)
-        cv2.circle(image, (int(center_x * w), int(center_y * h)), 10, (0, 255, 0), -1)
-
-
-class MouseController:
-    """Controls mouse movement based on face position and mouth state"""
-
-    def __init__(self):
-        self.prev_mouse_pos = None
-        self.click_triggered = False
-
-    def get_normalized_face_position(
-        self, face_landmarks, image_shape: Tuple[int, int]
-    ) -> Tuple[float, float]:
-        """Get normalized face position (0-1) in the frame"""
-        # Use nose tip (landmark 1) as reference
-        nose = face_landmarks.landmark[1]
-        x = nose.x
-        y = nose.y
-
-        # Convert to screen coordinates (flip y-axis)
-        screen_x = x
-        screen_y = y  # 1 - y
-
-        return screen_x, screen_y
-
-    def get_mouth_state(self, face_landmarks) -> Tuple[float, bool]:
-        """Calculate mouth openness and determine if mouth is open enough for click"""
-        # Mouth outer corners (61, 291) and top/bottom (13, 14)
-        left = face_landmarks.landmark[61]
-        right = face_landmarks.landmark[291]
-        top = face_landmarks.landmark[13]
-        bottom = face_landmarks.landmark[14]
-
-        # Calculate mouth width and height
-        mouth_width = math.sqrt((right.x - left.x) ** 2 + (right.y - left.y) ** 2)
-        mouth_height = math.sqrt((bottom.x - top.x) ** 2 + (bottom.y - top.y) ** 2)
-
-        # Calculate mouth open ratio
-        ratio = mouth_height / mouth_width if mouth_width > 0 else 0
-        is_open = ratio > MOUTH_OPEN_THRESHOLD
-
-        return ratio, is_open
-
-    def update_mouse(self, face_landmarks, image_shape: Tuple[int, int]):
-        """Update mouse position based on face position and handle clicks"""
-        # Get normalized face position (0-1)
-        face_x, face_y = self.get_normalized_face_position(face_landmarks, image_shape)
-
-        # Apply deadzone
-        if abs(face_x - 0.5) < MOUSE_DEADZONE and abs(face_y - 0.5) < MOUSE_DEADZONE:
-            return
-
-        # Convert to screen coordinates
-        screen_x = face_x * SCREEN_WIDTH * MOUSE_SCALE
-        screen_y = face_y * SCREEN_HEIGHT * MOUSE_SCALE
-
-        # Apply smoothing
-        if self.prev_mouse_pos:
-            smoothed_x = (
-                MOUSE_SMOOTHING * screen_x
-                + (1 - MOUSE_SMOOTHING) * self.prev_mouse_pos[0]
-            )
-            smoothed_y = (
-                MOUSE_SMOOTHING * screen_y
-                + (1 - MOUSE_SMOOTHING) * self.prev_mouse_pos[1]
-            )
+        self.right_blink = self.right_ear < self.blink_ratio_threshold
+        if self.left_ear < self.blink_ratio_threshold:
+            if (time.time() - self.last_blink_time) > BLINK_DETECTION_INTERVAL:
+                self.left_blink = True
         else:
-            smoothed_x, smoothed_y = screen_x, screen_y
-        # Move mouse
-        pyautogui.moveTo(
-            smoothed_x, smoothed_y, duration=0.0, logScreenshot=False, _pause=False
-        )
-        self.prev_mouse_pos = (smoothed_x, smoothed_y)
+            self.last_blink_time = time.time()
+            self.left_blink = False
+        #self.left_blink = self.left_ear < self.blink_ratio_threshold
 
-        # Check mouth state for click
-        _, is_open = self.get_mouth_state(face_landmarks)
+    def _calculate_eye_aspect_ratio(self, eye_landmarks):
+        # Compute the vertical distances
+        vertical1 = math.dist(eye_landmarks[1], eye_landmarks[5])
+        vertical2 = math.dist(eye_landmarks[2], eye_landmarks[4])
 
-        if is_open and not self.click_triggered:
-            print("Mouth is open")
-            pyautogui.click()
-            self.click_triggered = True
-        elif not is_open:
-            self.click_triggered = False
+        # Compute the horizontal distance
+        horizontal = math.dist(eye_landmarks[0], eye_landmarks[3])
 
+        # Calculate eye aspect ratio
+        ear = (vertical1 + vertical2) / (2.0 * horizontal)
+        return ear
 
 class FaceMouseApp:
     """Main application class"""
 
     def __init__(self):
         self.detector = FaceDetector()
-        self.visualizer = FaceVisualizer()
+        # self.visualizer = FaceVisualizer()
         self.mouse_controller = MouseController()
         self.cap = cv2.VideoCapture(0)
 
@@ -242,23 +252,15 @@ class FaceMouseApp:
 
                 # Flip image horizontally for a mirror effect
                 image = cv2.flip(image, 1)
-                h, w = image.shape[:2]
 
-                # Detect face
                 face_landmarks = self.detector.detect(image)
 
                 if face_landmarks:
-                    # Visualize face
-                    image = self.visualizer.draw(image, face_landmarks, self.detector)
+                    image = self.detector.draw(image, face_landmarks)
 
-                    # Control mouse
-                    self.mouse_controller.update_mouse(face_landmarks, (w, h))
-
-                # Show the image
-                cv2.imshow("Face Controlled Mouse", image)
-
-                # Exit on 'q' key
-                if cv2.waitKey(5) & 0xFF == ord("q"):
+                    h, w = image.shape[:2]
+                    self.mouse_controller.update_mouse(face_landmarks, (w, h), click=self.detector.left_blink)
+                if not self.detector.show(image):
                     break
 
         finally:
@@ -268,7 +270,6 @@ class FaceMouseApp:
 
 def main():
     """Main function"""
-    # Create an instance of the application
     app = FaceMouseApp()
     app.run()
 
