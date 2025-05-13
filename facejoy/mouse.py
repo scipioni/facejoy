@@ -1,6 +1,6 @@
 import math
-from typing import List, Optional, Tuple
 import time
+from typing import List, Optional, Tuple
 
 import pyautogui
 
@@ -10,73 +10,76 @@ MOUSE_DEADZONE = 0.13  # Minimal movement required to move mouse
 MOUTH_OPEN_THRESHOLD = 0.4  # Ratio of mouth height to width to trigger click
 SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
 
+
 class MovingPoint:
     def __init__(self, x=0, y=0, prev_point=None):
-        """
-        Initialize a MovingPoint with coordinates (x, y).
-        If prev_point is provided, velocity is calculated relative to it.
-        
-        :param x: current x coordinate
-        :param y: current y coordinate
-        :param prev_point: previous MovingPoint instance (optional)
-        """
         self.x = x
         self.y = y
         self.timestamp = time.time()
         self.prev_point = prev_point
-        self.velocity = self._calculate_velocity()
-    
-    def _calculate_velocity(self):
+        self.force = self._calculate_force()
+
+    def _calculate_force(self):
         """
         Calculate velocity based on previous point.
         Returns (vx, vy) or (0, 0) if no previous point.
         """
         if self.prev_point is None:
             return (0, 0)
-        
+
         delta_time = time.time() - self.prev_point.timestamp
         if not delta_time:
             return (0, 0)  # Avoid division by zer
-        
-        vx = (self.x - self.prev_point.x)/delta_time
-        vy = (self.y - self.prev_point.y)/delta_time
 
+        vx = (self.x - self.prev_point.x) / delta_time
+        vy = (self.y - self.prev_point.y) / delta_time
 
         return (vx, vy)
-    
-    def update_position(self, new_x, new_y):
-        """
-        Update the point's position and recalculate velocity.
-        The current point becomes the previous point for future velocity calculations.
-        
-        :param new_x: new x coordinate
-        :param new_y: new y coordinate
-        :return: the new MovingPoint instance with updated position and velocity
-        """
-        
-        # media
-        n=8
-        new_x = new_x/n + (n-1)*self.x/n
-        new_y = new_y/n + (n-1)*self.y/n 
 
-        
+    def update_position(self, new_x, new_y, mean=10):
+        new_x = new_x / mean + (mean - 1) * self.x / mean
+        new_y = new_y / mean + (mean - 1) * self.y / mean
+
         new_point = MovingPoint(new_x, new_y, self)
 
         return new_point
-    
-    def get_velocity_xy(self):
-        """
-        Get the current velocity as a tuple (vx, vy)
-        """
-        return self.velocity
-    
-    def get_velocity(self):
-        # module of vector vx and vy
-        vx, vy = self.velocity
-        return math.sqrt(vx**2 + vy**2)    
+
+    def get_force_xy(self):
+        return self.force
+
+    def get_force(self):
+        vx, vy = self.force
+        return math.sqrt(vx**2 + vy**2)
+
     def __repr__(self):
-        return f"MovingPoint(x={self.x}, y={self.y}, velocity={self.velocity})"
-    
+        return f"MovingPoint(x={self.x}, y={self.y}, velocity={self.force})"
+
+
+class Cursor:
+    def __init__(self, m=1.0):
+        #self.current = pyautogui.position()
+        #self.previous = self.current
+        self.previous_time = time.time()
+        self.velocity = (0, 0)
+        self.m = m
+    def move(self, fx, fy):
+        """
+        v(t)=v0+a⋅t
+        """
+        ax = fx/self.m
+        ay = fy/self.m
+        v0x, v0y = self.velocity
+        x0, y0 = pyautogui.position()
+        now = time.time()
+        delta_time = now - self.previous_time
+        x = x0 + v0x * delta_time + ax * delta_time**2  / 2
+        y = y0 + v0y * delta_time + ay * delta_time**2  / 2
+        pyautogui.moveTo(x, y)
+        self.previous_time = now
+        self.velocity = (v0x+ax*delta_time, v0y+ay*delta_time)
+
+
+
 class MouseController:
     """Controls mouse movement based on face position and mouth state"""
 
@@ -85,7 +88,9 @@ class MouseController:
         self.prev_face_xy = None
 
         self.click_triggered = False
-        self.point = MovingPoint(0, 0)
+        self.input_force = MovingPoint(0, 0)
+        self.cursor = Cursor(m=.001)
+
 
     def get_normalized_face_position(
         self, face_landmarks, image_shape: Tuple[int, int]
@@ -124,50 +129,53 @@ class MouseController:
         """Update mouse position based on face position and handle clicks"""
         # Get normalized face position (0-1)
         face_x, face_y = self.get_normalized_face_position(face_landmarks, image_shape)
-        #print("x", abs(face_x - 0.5), MOUSE_DEADZONE)
-        #print("y",abs(face_y - 0.5), MOUSE_DEADZONE)
+        # print("x", abs(face_x - 0.5), MOUSE_DEADZONE)
+        # print("y",abs(face_y - 0.5), MOUSE_DEADZONE)
 
-        self.point = self.point.update_position(face_x, face_y)
-        #print(self.point)
-        # Apply deadzone
-        # if abs(face_x - 0.5) < MOUSE_DEADZONE and abs(face_y - 0.5) < MOUSE_DEADZONE:
-        #     return
-        
+        self.input_force = self.input_force.update_position(face_x, face_y)
 
-        velocity = round(100*self.point.get_velocity())
+        fx, fy = self.input_force.get_force_xy()
+        self.cursor.move(fx, fy)
 
-        print(f"v={velocity}")
 
-        # Convert to screen coordinates
-        screen_x = face_x * SCREEN_WIDTH * MOUSE_SCALE
-        screen_y = face_y * SCREEN_HEIGHT * MOUSE_SCALE
+        # # print(self.point)
+        # # Apply deadzone
+        # # if abs(face_x - 0.5) < MOUSE_DEADZONE and abs(face_y - 0.5) < MOUSE_DEADZONE:
+        # #     return
 
-        # Apply smoothing
-        if self.prev_mouse_pos:
-            smoothed_x = (
-                MOUSE_SMOOTHING * screen_x
-                + (1 - MOUSE_SMOOTHING) * self.prev_mouse_pos[0]
-            )
-            smoothed_y = (
-                MOUSE_SMOOTHING * screen_y
-                + (1 - MOUSE_SMOOTHING) * self.prev_mouse_pos[1]
-            )
-        else:
-            smoothed_x, smoothed_y = screen_x, screen_y
-        # Move mouse
-        #pyautogui.moveTo(
-        #    smoothed_x, smoothed_y, duration=0.0, logScreenshot=False, _pause=False
-        #)
-        self.prev_mouse_pos = (smoothed_x, smoothed_y)
+        # velocity = round(100 * self.point.get_force())
 
-        # Check mouth state for click
-        _, is_open = self.get_mouth_state(face_landmarks)
+        # print(f"v={velocity}")
 
-        #if is_open and not self.click_triggered:
-        if click and not self.click_triggered:
+        # # Convert to screen coordinates
+        # screen_x = face_x * SCREEN_WIDTH * MOUSE_SCALE
+        # screen_y = face_y * SCREEN_HEIGHT * MOUSE_SCALE
 
-            print("click fired")
-            #pyautogui.click()
-            self.click_triggered = True
-        elif not is_open:
-            self.click_triggered = False
+        # # Apply smoothing
+        # if self.prev_mouse_pos:
+        #     smoothed_x = (
+        #         MOUSE_SMOOTHING * screen_x
+        #         + (1 - MOUSE_SMOOTHING) * self.prev_mouse_pos[0]
+        #     )
+        #     smoothed_y = (
+        #         MOUSE_SMOOTHING * screen_y
+        #         + (1 - MOUSE_SMOOTHING) * self.prev_mouse_pos[1]
+        #     )
+        # else:
+        #     smoothed_x, smoothed_y = screen_x, screen_y
+        # # Move mouse
+        # # pyautogui.moveTo(
+        # #    smoothed_x, smoothed_y, duration=0.0, logScreenshot=False, _pause=False
+        # # )
+        # self.prev_mouse_pos = (smoothed_x, smoothed_y)
+
+        # # Check mouth state for click
+        # _, is_open = self.get_mouth_state(face_landmarks)
+
+        # # if is_open and not self.click_triggered:
+        # if click and not self.click_triggered:
+        #     print("click fired")
+        #     # pyautogui.click()
+        #     self.click_triggered = True
+        # elif not is_open:
+        #     self.click_triggered = False
