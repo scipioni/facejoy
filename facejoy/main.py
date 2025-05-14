@@ -5,7 +5,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import time
-
+from typing import List, Optional, Tuple
 from .mouse import MouseController
 
 RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144]  # MediaPipe landmarks for right eye
@@ -133,6 +133,7 @@ class FaceVisualizer:
             self._draw_irish(LEFT_EYE_INDICES, image, self.face_landmarks)
         return image
 
+
     def _draw_eye(self, idxx, image: np.ndarray, face_landmarks: np.ndarray):
         h, w = image.shape[:2]
 
@@ -189,9 +190,12 @@ class FaceDetector(FaceVisualizer):
             min_tracking_confidence=0.5,
         )
         self.last_blink_time = 0
+        self.w = 0
+        self.h = 0
 
     def detect(self, image: np.ndarray) -> Optional[np.ndarray]:
         """Detect face landmarks in the image"""
+        self.w, self.h = image.shape[1], image.shape[0]
         results = self.face_mesh.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
         if not results.multi_face_landmarks:
             return None
@@ -219,7 +223,7 @@ class FaceDetector(FaceVisualizer):
         else:
             self.last_blink_time = time.time()
             self.left_blink = False
-        #self.left_blink = self.left_ear < self.blink_ratio_threshold
+        # self.left_blink = self.left_ear < self.blink_ratio_threshold
 
     def _calculate_eye_aspect_ratio(self, eye_landmarks):
         # Compute the vertical distances
@@ -232,6 +236,22 @@ class FaceDetector(FaceVisualizer):
         # Calculate eye aspect ratio
         ear = (vertical1 + vertical2) / (2.0 * horizontal)
         return ear
+
+    def get_position_normalized(
+        self,
+    ) -> Tuple[float, float]:
+        nose = self.face_landmarks.landmark[1]
+        x = nose.x
+        y = nose.y
+        return (x, y)
+
+    def draw_force(self, image: np.ndarray, force_xy, zoom=4.0):
+        nose_normalized = self.get_position_normalized()
+        nose_xy = (int(self.w*nose_normalized[0]), int(self.h*nose_normalized[1]))
+        force_point = (nose_xy[0] + int(zoom*force_xy[0]), nose_xy[1] + int(zoom*force_xy[1]))
+        cv2.line(image, nose_xy, force_point, RED_COLOR, 3)
+        return image
+
 
 class FaceMouseApp:
     """Main application class"""
@@ -259,7 +279,10 @@ class FaceMouseApp:
                     image = self.detector.draw(image, face_landmarks)
 
                     h, w = image.shape[:2]
-                    self.mouse_controller.update_mouse(face_landmarks, (w, h), click=self.detector.left_blink)
+                    self.mouse_controller.update_mouse(
+                        face_landmarks, (w, h), click=self.detector.left_blink
+                    )
+                    self.detector.draw_force(image, self.mouse_controller.input_force.force)
                 if not self.detector.show(image):
                     break
 

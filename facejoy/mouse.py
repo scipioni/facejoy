@@ -21,8 +21,7 @@ class MovingPoint:
 
     def _calculate_force(self):
         """
-        Calculate velocity based on previous point.
-        Returns (vx, vy) or (0, 0) if no previous point.
+        force is velocity in pixels per second
         """
         if self.prev_point is None:
             return (0, 0)
@@ -31,8 +30,8 @@ class MovingPoint:
         if not delta_time:
             return (0, 0)  # Avoid division by zer
 
-        vx = (self.x - self.prev_point.x) / delta_time
-        vy = (self.y - self.prev_point.y) / delta_time
+        vx = round(100*(self.x - self.prev_point.x) / delta_time)
+        vy = round(100*(self.y - self.prev_point.y) / delta_time)
 
         return (vx, vy)
 
@@ -45,20 +44,21 @@ class MovingPoint:
         return new_point
 
     def get_force_xy(self):
+        
         return self.force
 
     def get_force(self):
-        vx, vy = self.force
-        return math.sqrt(vx**2 + vy**2)
+        fx, fy = self.force
+        return int(round(100*math.sqrt(fx**2 + fy**2)))
 
     def __repr__(self):
-        return f"MovingPoint(x={self.x}, y={self.y}, velocity={self.force})"
+        return f"MovingPoint(x={self.x}, y={self.y}, force={self.get_force()} force_xy={self.force})"
 
 
 class Cursor:
     def __init__(self, m=1.0):
         #self.current = pyautogui.position()
-        #self.previous = self.current
+        self.previous_f = (0, 0)
         self.previous_time = time.time()
         self.velocity = (0, 0)
         self.m = m
@@ -66,17 +66,25 @@ class Cursor:
         """
         v(t)=v0+a⋅t
         """
-        ax = fx/self.m
-        ay = fy/self.m
+        if not self.previous_f:
+            self.previous_f = (fx, fy)
+            self.previous_time = time.time()
+            return
+        
+        ax = (fx-self.previous_f[0])/self.m
+        ay = (fy-self.previous_f[1])/self.m
+        print(f"ax={ax}, ay={ay}")
         v0x, v0y = self.velocity
         x0, y0 = pyautogui.position()
         now = time.time()
         delta_time = now - self.previous_time
         x = x0 + v0x * delta_time + ax * delta_time**2  / 2
         y = y0 + v0y * delta_time + ay * delta_time**2  / 2
-        pyautogui.moveTo(x, y)
+        #pyautogui.moveTo(x, y, duration=0.0, logScreenshot=False, _pause=False)
         self.previous_time = now
         self.velocity = (v0x+ax*delta_time, v0y+ay*delta_time)
+        self.previous_f = (fx, fy)
+
 
 
 
@@ -89,7 +97,7 @@ class MouseController:
 
         self.click_triggered = False
         self.input_force = MovingPoint(0, 0)
-        self.cursor = Cursor(m=.001)
+        self.cursor = Cursor(m=.1)
 
 
     def get_normalized_face_position(
@@ -133,6 +141,7 @@ class MouseController:
         # print("y",abs(face_y - 0.5), MOUSE_DEADZONE)
 
         self.input_force = self.input_force.update_position(face_x, face_y)
+        print(f"force={self.input_force}")
 
         fx, fy = self.input_force.get_force_xy()
         self.cursor.move(fx, fy)
