@@ -6,7 +6,9 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
+from .config import config
 from .mouse import MouseController
+
 
 RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144]  # MediaPipe landmarks for right eye
 LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380]  # MediaPipe landmarks for left eye
@@ -240,12 +242,12 @@ class FaceDetector(FaceVisualizer):
         return ear
 
     def get_position_normalized(
-        self, smoothing_window: int = 25
+        self
     ) -> Tuple[float, float]:
         nose = self.face_landmarks.landmark[1]
 
         self.positions.append((nose.x, nose.y))
-        if len(self.positions) > smoothing_window:
+        if len(self.positions) > config.position_samples:
             self.positions.pop(0)
         return np.mean(self.positions, axis=0)
         
