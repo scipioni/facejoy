@@ -1,11 +1,11 @@
 import math
-from typing import Optional
+import time
+from typing import List, Optional, Tuple
 
 import cv2
 import mediapipe as mp
 import numpy as np
-import time
-from typing import List, Optional, Tuple
+
 from .mouse import MouseController
 
 RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144]  # MediaPipe landmarks for right eye
@@ -51,7 +51,6 @@ BLINK_DETECTION_INTERVAL = 0.5
 GREEN_COLOR = (86, 241, 13)
 RED_COLOR = (30, 46, 209)
 YELLOW_COLOR = (0, 255, 255)
-
 
 
 def on_trackbar(val):
@@ -135,7 +134,6 @@ class FaceVisualizer:
             self._draw_irish(LEFT_EYE_INDICES, image, self.face_landmarks)
         return image
 
-
     def _draw_eye(self, idxx, image: np.ndarray, face_landmarks: np.ndarray):
         h, w = image.shape[:2]
 
@@ -189,7 +187,7 @@ class FaceDetector(FaceVisualizer):
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=1,
             refine_landmarks=True,
-            min_detection_confidence=0.7, # Increase to reduce noise (e.g., 0.7)
+            min_detection_confidence=0.7,  # Increase to reduce noise (e.g., 0.7)
             min_tracking_confidence=0.7,
         )
         self.last_blink_time = 0
@@ -239,12 +237,15 @@ class FaceDetector(FaceVisualizer):
         # Calculate eye aspect ratio
         ear = (vertical1 + vertical2) / (2.0 * horizontal)
         return ear
-    
+
     def _smooth_landmarks(self, current_landmarks, smoothing_factor=3):
         if self.prev_landmarks is None:
             self.prev_landmarks = current_landmarks
         else:
-            smoothed = self.prev_landmarks * (1 - smoothing_factor) + current_landmarks * smoothing_factor
+            smoothed = (
+                self.prev_landmarks * (1 - smoothing_factor)
+                + current_landmarks * smoothing_factor
+            )
             self.prev_landmarks = smoothed
         return self.prev_landmarks
 
@@ -258,8 +259,11 @@ class FaceDetector(FaceVisualizer):
 
     def draw_force(self, image: np.ndarray, force_xy, zoom=7.0):
         nose_normalized = self.get_position_normalized()
-        nose_xy = (int(self.w*nose_normalized[0]), int(self.h*nose_normalized[1]))
-        force_point = (nose_xy[0] + int(zoom*force_xy[0]), nose_xy[1] + int(zoom*force_xy[1]))
+        nose_xy = (int(self.w * nose_normalized[0]), int(self.h * nose_normalized[1]))
+        force_point = (
+            nose_xy[0] + int(zoom * force_xy[0]),
+            nose_xy[1] + int(zoom * force_xy[1]),
+        )
         cv2.arrowedLine(image, nose_xy, force_point, YELLOW_COLOR, 2, tipLength=0.3)
         return image
 
@@ -282,40 +286,46 @@ class FaceMouseApp:
                     continue
 
                 # crop image in center
+                image = self.crop_and_filter(image)
                 h, w = image.shape[:2]
-                img_height, img_width = image.shape[:2]
-                crop_width = w // 2
-                crop_height = h // 2
-                start_x = img_width // 2 - crop_width // 2
-                start_y = img_height // 2 - crop_height // 2
-                image = image[start_y:start_y + crop_height, start_x:start_x + crop_width]
-                h, w = image.shape[:2]
-
-                # Flip image horizontally for a mirror effect
-                image = cv2.flip(image, 1)
-
-                # fast blur to reduce noise
-                #image = cv2.GaussianBlur(image, (3, 3), 0)
-                image = cv2.bilateralFilter(image, d=9, sigmaColor=75, sigmaSpace=75) # Preprocess the input frame to reduce noise while preserving edges:
-
                 face_landmarks = self.detector.detect(image)
                 image_out = np.zeros_like(image)
 
                 if face_landmarks:
-
                     # create black image
                     image_out = self.detector.draw(image_out, face_landmarks)
-
                     self.mouse_controller.update_mouse(
                         face_landmarks, (w, h), click=self.detector.left_blink
                     )
-                    self.detector.draw_force(image_out, self.mouse_controller.input_force.force)
+                    self.detector.draw_force(
+                        image_out, self.mouse_controller.input_force.force
+                    )
                 if not self.detector.show(image_out):
                     break
 
         finally:
             self.cap.release()
             cv2.destroyAllWindows()
+
+    def crop_and_filter(self, image):
+        h, w = image.shape[:2]
+        img_height, img_width = image.shape[:2]
+        crop_width = w // 2
+        crop_height = h // 2
+        start_x = img_width // 2 - crop_width // 2
+        start_y = img_height // 2 - crop_height // 2
+        image = image[start_y : start_y + crop_height, start_x : start_x + crop_width]
+        h, w = image.shape[:2]
+
+        # Flip image horizontally for a mirror effect
+        image = cv2.flip(image, 1)
+
+        # fast blur to reduce noise
+        # image = cv2.GaussianBlur(image, (3, 3), 0)
+        image = cv2.bilateralFilter(
+            image, d=9, sigmaColor=75, sigmaSpace=75
+        )  # Preprocess the input frame to reduce noise while preserving edges
+        return image
 
 
 def main():
