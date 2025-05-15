@@ -34,7 +34,12 @@ def get_config() -> argparse.Namespace:
         type=int,
         help="Number of samples to smooth the position",
     )
-
+    parser.add_argument(
+        "--mouth-open-threshold",
+        default=.4,
+        type=float,
+        help="Mouth open threshold for click detection",
+    )
     _config, _ = parser.parse_known_args()
 
     return _config

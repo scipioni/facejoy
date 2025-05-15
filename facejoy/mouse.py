@@ -7,7 +7,6 @@ import pyautogui
 MOUSE_SMOOTHING = 0.1  # Lower is smoother
 MOUSE_SCALE = 1.0  # How much to scale face movement to mouse movement
 MOUSE_DEADZONE = 0.13  # Minimal movement required to move mouse
-MOUTH_OPEN_THRESHOLD = 0.4  # Ratio of mouth height to width to trigger click
 SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
 
 
@@ -36,8 +35,8 @@ class MovingPoint:
         return (vx, vy)
 
     def update_position(self, new_x, new_y, mean=10):
-        new_x = new_x / mean + (mean - 1) * self.x / mean
-        new_y = new_y / mean + (mean - 1) * self.y / mean
+        #new_x = new_x / mean + (mean - 1) * self.x / mean
+        #new_y = new_y / mean + (mean - 1) * self.y / mean
 
         new_point = MovingPoint(new_x, new_y, self)
 
@@ -99,47 +98,10 @@ class MouseController:
         self.cursor = Cursor(m=.1)
 
 
-    def get_normalized_face_position(
-        self, face_landmarks, image_shape: Tuple[int, int]
-    ) -> Tuple[float, float]:
-        """Get normalized face position (0-1) in the frame"""
-        # Use nose tip (landmark 1) as reference
-        nose = face_landmarks.landmark[1]
-        x = nose.x
-        y = nose.y
-
-        # Convert to screen coordinates (flip y-axis)
-        screen_x = x
-        screen_y = y  # 1 - y
-
-        return screen_x, screen_y
-
-    def get_mouth_state(self, face_landmarks) -> Tuple[float, bool]:
-        """Calculate mouth openness and determine if mouth is open enough for click"""
-        # Mouth outer corners (61, 291) and top/bottom (13, 14)
-        left = face_landmarks.landmark[61]
-        right = face_landmarks.landmark[291]
-        top = face_landmarks.landmark[13]
-        bottom = face_landmarks.landmark[14]
-
-        # Calculate mouth width and height
-        mouth_width = math.sqrt((right.x - left.x) ** 2 + (right.y - left.y) ** 2)
-        mouth_height = math.sqrt((bottom.x - top.x) ** 2 + (bottom.y - top.y) ** 2)
-
-        # Calculate mouth open ratio
-        ratio = mouth_height / mouth_width if mouth_width > 0 else 0
-        is_open = ratio > MOUTH_OPEN_THRESHOLD
-
-        return ratio, is_open
-
-    def update_mouse(self, face_x, face_y, image_shape: Tuple[int, int], click=False):
+    def update_mouse(self, face_x, face_y, click=False):
         """Update mouse position based on face position and handle clicks"""
-        # Get normalized face position (0-1)
-        #face_x, face_y = self.get_normalized_face_position(face_landmarks, image_shape)
         if not self.input_force:
             self.input_force = MovingPoint(face_x, face_y)
-        # print("x", abs(face_x - 0.5), MOUSE_DEADZONE)
-        # print("y",abs(face_y - 0.5), MOUSE_DEADZONE)
 
         self.input_force = self.input_force.update_position(face_x, face_y)
         #print(f"force={self.input_force}")

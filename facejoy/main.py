@@ -189,8 +189,8 @@ class FaceDetector(FaceVisualizer):
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=1,
             refine_landmarks=True,
-            min_detection_confidence=0.7,  # Increase to reduce noise (e.g., 0.7)
-            min_tracking_confidence=0.7,
+            min_detection_confidence=0.5,  # Increase to reduce noise (e.g., 0.7)
+            min_tracking_confidence=0.5,
         )
         self.last_blink_time = 0
         self.w = 0
@@ -240,6 +240,25 @@ class FaceDetector(FaceVisualizer):
         # Calculate eye aspect ratio
         ear = (vertical1 + vertical2) / (2.0 * horizontal)
         return ear
+    
+
+    def get_mouth_state(self) -> Tuple[float, bool]:
+        """Calculate mouth openness and determine if mouth is open enough for click"""
+        # Mouth outer corners (61, 291) and top/bottom (13, 14)
+        left = self.face_landmarks.landmark[61]
+        right = self.face_landmarks.landmark[291]
+        top = self.face_landmarks.landmark[13]
+        bottom = self.face_landmarks.landmark[14]
+
+        # Calculate mouth width and height
+        mouth_width = math.sqrt((right.x - left.x) ** 2 + (right.y - left.y) ** 2)
+        mouth_height = math.sqrt((bottom.x - top.x) ** 2 + (bottom.y - top.y) ** 2)
+
+        # Calculate mouth open ratio
+        ratio = mouth_height / mouth_width if mouth_width > 0 else 0
+        is_open = ratio > config.mouth_open_threshold
+
+        return ratio, is_open
 
     def get_position_normalized(
         self
@@ -281,17 +300,16 @@ class FaceMouseApp:
 
                 # crop image in center
                 image = self.crop_and_filter(image)
-                h, w = image.shape[:2]
+                #h, w = image.shape[:2]
                 face_landmarks = self.detector.detect(image)
                 image_out = np.zeros_like(image)
 
                 if face_landmarks:
                     image_out = self.detector.draw(image_out, face_landmarks)
 
-                    face_x, face_y = self.detector.get_position_normalized()
-                    #force = self.detector.get_force()
+                    face_x, face_y = self.detector.get_position_normalized() # from 0 to 1
                     self.mouse_controller.update_mouse(
-                        face_x, face_y, (w, h), click=self.detector.left_blink
+                        face_x, face_y, click=self.detector.left_blink
                     )
                     self.detector.draw_force(
                         image_out, self.mouse_controller.input_force.force
@@ -317,11 +335,11 @@ class FaceMouseApp:
         image = cv2.flip(image, 1)
 
         # fast blur to reduce noise
-        # image = cv2.GaussianBlur(image, (3, 3), 0)
+        #image = cv2.GaussianBlur(image, (3, 3), 0)
+        return image
         image = cv2.bilateralFilter(
             image, d=9, sigmaColor=75, sigmaSpace=75
         )  # Preprocess the input frame to reduce noise while preserving edges
-        return image
 
 
 def main():
