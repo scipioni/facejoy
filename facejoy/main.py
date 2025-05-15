@@ -193,6 +193,7 @@ class FaceDetector(FaceVisualizer):
         self.last_blink_time = 0
         self.w = 0
         self.h = 0
+        self.positions = []
 
     def detect(self, image: np.ndarray) -> Optional[np.ndarray]:
         """Detect face landmarks in the image"""
@@ -238,25 +239,16 @@ class FaceDetector(FaceVisualizer):
         ear = (vertical1 + vertical2) / (2.0 * horizontal)
         return ear
 
-    def _smooth_landmarks(self, current_landmarks, smoothing_factor=3):
-        if self.prev_landmarks is None:
-            self.prev_landmarks = current_landmarks
-        else:
-            smoothed = (
-                self.prev_landmarks * (1 - smoothing_factor)
-                + current_landmarks * smoothing_factor
-            )
-            self.prev_landmarks = smoothed
-        return self.prev_landmarks
-
     def get_position_normalized(
-        self,
+        self, smoothing_window: int = 25
     ) -> Tuple[float, float]:
         nose = self.face_landmarks.landmark[1]
-        x = nose.x
-        y = nose.y
-        return (x, y)
 
+        self.positions.append((nose.x, nose.y))
+        if len(self.positions) > smoothing_window:
+            self.positions.pop(0)
+        return np.mean(self.positions, axis=0)
+        
     def draw_force(self, image: np.ndarray, force_xy, zoom=7.0):
         nose_normalized = self.get_position_normalized()
         nose_xy = (int(self.w * nose_normalized[0]), int(self.h * nose_normalized[1]))
@@ -292,10 +284,12 @@ class FaceMouseApp:
                 image_out = np.zeros_like(image)
 
                 if face_landmarks:
-                    # create black image
                     image_out = self.detector.draw(image_out, face_landmarks)
+
+                    face_x, face_y = self.detector.get_position_normalized()
+                    #force = self.detector.get_force()
                     self.mouse_controller.update_mouse(
-                        face_landmarks, (w, h), click=self.detector.left_blink
+                        face_x, face_y, (w, h), click=self.detector.left_blink
                     )
                     self.detector.draw_force(
                         image_out, self.mouse_controller.input_force.force

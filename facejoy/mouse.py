@@ -132,10 +132,10 @@ class MouseController:
 
         return ratio, is_open
 
-    def update_mouse(self, face_landmarks, image_shape: Tuple[int, int], click=False):
+    def update_mouse(self, face_x, face_y, image_shape: Tuple[int, int], click=False):
         """Update mouse position based on face position and handle clicks"""
         # Get normalized face position (0-1)
-        face_x, face_y = self.get_normalized_face_position(face_landmarks, image_shape)
+        #face_x, face_y = self.get_normalized_face_position(face_landmarks, image_shape)
         if not self.input_force:
             self.input_force = MovingPoint(face_x, face_y)
         # print("x", abs(face_x - 0.5), MOUSE_DEADZONE)
