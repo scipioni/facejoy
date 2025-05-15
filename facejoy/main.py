@@ -50,6 +50,8 @@ BLINK_RATIO_THRESHOLD = 18
 BLINK_DETECTION_INTERVAL = 0.5
 GREEN_COLOR = (86, 241, 13)
 RED_COLOR = (30, 46, 209)
+YELLOW_COLOR = (0, 255, 255)
+
 
 
 def on_trackbar(val):
@@ -107,7 +109,7 @@ class FaceVisualizer:
 
         cv2.putText(
             image,
-            f"Right EAR: {self.right_ear:.2f}",
+            f"Right: {self.right_ear:.2f}",
             (10, 30),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -116,7 +118,7 @@ class FaceVisualizer:
         )
         cv2.putText(
             image,
-            f"Left EAR: {self.left_ear:.2f}",
+            f"Left: {self.left_ear:.2f}",
             (10, 60),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
@@ -182,12 +184,13 @@ class FaceDetector(FaceVisualizer):
 
     def __init__(self):
         super().__init__()
+        self.prev_landmarks = None
         self.mp_face_mesh = mp.solutions.face_mesh
         self.face_mesh = self.mp_face_mesh.FaceMesh(
             max_num_faces=1,
             refine_landmarks=True,
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
+            min_detection_confidence=0.7, # Increase to reduce noise (e.g., 0.7)
+            min_tracking_confidence=0.7,
         )
         self.last_blink_time = 0
         self.w = 0
@@ -236,6 +239,14 @@ class FaceDetector(FaceVisualizer):
         # Calculate eye aspect ratio
         ear = (vertical1 + vertical2) / (2.0 * horizontal)
         return ear
+    
+    def _smooth_landmarks(self, current_landmarks, smoothing_factor=3):
+        if self.prev_landmarks is None:
+            self.prev_landmarks = current_landmarks
+        else:
+            smoothed = self.prev_landmarks * (1 - smoothing_factor) + current_landmarks * smoothing_factor
+            self.prev_landmarks = smoothed
+        return self.prev_landmarks
 
     def get_position_normalized(
         self,
@@ -245,11 +256,11 @@ class FaceDetector(FaceVisualizer):
         y = nose.y
         return (x, y)
 
-    def draw_force(self, image: np.ndarray, force_xy, zoom=5.0):
+    def draw_force(self, image: np.ndarray, force_xy, zoom=7.0):
         nose_normalized = self.get_position_normalized()
         nose_xy = (int(self.w*nose_normalized[0]), int(self.h*nose_normalized[1]))
         force_point = (nose_xy[0] + int(zoom*force_xy[0]), nose_xy[1] + int(zoom*force_xy[1]))
-        cv2.arrowedLine(image, nose_xy, force_point, RED_COLOR, 2, tipLength=0.3)
+        cv2.arrowedLine(image, nose_xy, force_point, YELLOW_COLOR, 2, tipLength=0.3)
         return image
 
 
@@ -273,17 +284,24 @@ class FaceMouseApp:
                 # Flip image horizontally for a mirror effect
                 image = cv2.flip(image, 1)
 
+                # fast blur to reduce noise
+                #image = cv2.GaussianBlur(image, (3, 3), 0)
+                image = cv2.bilateralFilter(image, d=9, sigmaColor=75, sigmaSpace=75) # Preprocess the input frame to reduce noise while preserving edges:
+
                 face_landmarks = self.detector.detect(image)
+                h, w = image.shape[:2]
+                image_out = np.zeros_like(image)
 
                 if face_landmarks:
-                    image = self.detector.draw(image, face_landmarks)
 
-                    h, w = image.shape[:2]
+                    # create black image
+                    image_out = self.detector.draw(image_out, face_landmarks)
+
                     self.mouse_controller.update_mouse(
                         face_landmarks, (w, h), click=self.detector.left_blink
                     )
-                    self.detector.draw_force(image, self.mouse_controller.input_force.force)
-                if not self.detector.show(image):
+                    self.detector.draw_force(image_out, self.mouse_controller.input_force.force)
+                if not self.detector.show(image_out):
                     break
 
         finally:
