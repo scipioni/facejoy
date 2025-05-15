@@ -107,24 +107,24 @@ class FaceVisualizer:
         #   landmark_drawing_spec=None,
         #   connection_drawing_spec=self.drawing_styles.get_default_face_mesh_iris_connections_style())
 
-        cv2.putText(
-            image,
-            f"Right: {self.right_ear:.2f}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 0, 255),
-            2,
-        )
-        cv2.putText(
-            image,
-            f"Left: {self.left_ear:.2f}",
-            (10, 60),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.7,
-            (0, 0, 255),
-            2,
-        )
+        # cv2.putText(
+        #     image,
+        #     f"Right: {self.right_ear:.2f}",
+        #     (10, 30),
+        #     cv2.FONT_HERSHEY_SIMPLEX,
+        #     0.7,
+        #     (0, 0, 255),
+        #     2,
+        # )
+        # cv2.putText(
+        #     image,
+        #     f"Left: {self.left_ear:.2f}",
+        #     (10, 60),
+        #     cv2.FONT_HERSHEY_SIMPLEX,
+        #     0.7,
+        #     (0, 0, 255),
+        #     2,
+        # )
 
         self._draw_eye(RIGHT_EYE, image, self.face_landmarks)
         self._draw_eye(LEFT_EYE, image, self.face_landmarks)
@@ -170,7 +170,7 @@ class FaceVisualizer:
         center_y = sum([p[1] for p in eye_points]) / len(eye_points)
         cv2.circle(image, (int(center_x * w), int(center_y * h)), 10, (0, 255, 0), -1)
 
-    def show(self, image, zoom=3.0):
+    def show(self, image, zoom=7.0):
         cv2.imshow("Parameters", cv2.resize(image, (0, 0), fx=zoom, fy=zoom))
 
         # Exit on 'q' key
@@ -281,6 +281,16 @@ class FaceMouseApp:
                 if not success:
                     continue
 
+                # crop image in center
+                h, w = image.shape[:2]
+                img_height, img_width = image.shape[:2]
+                crop_width = w // 2
+                crop_height = h // 2
+                start_x = img_width // 2 - crop_width // 2
+                start_y = img_height // 2 - crop_height // 2
+                image = image[start_y:start_y + crop_height, start_x:start_x + crop_width]
+                h, w = image.shape[:2]
+
                 # Flip image horizontally for a mirror effect
                 image = cv2.flip(image, 1)
 
@@ -289,7 +299,6 @@ class FaceMouseApp:
                 image = cv2.bilateralFilter(image, d=9, sigmaColor=75, sigmaSpace=75) # Preprocess the input frame to reduce noise while preserving edges:
 
                 face_landmarks = self.detector.detect(image)
-                h, w = image.shape[:2]
                 image_out = np.zeros_like(image)
 
                 if face_landmarks:
