@@ -168,7 +168,7 @@ class FaceVisualizer:
         center_y = sum([p[1] for p in eye_points]) / len(eye_points)
         cv2.circle(image, (int(center_x * w), int(center_y * h)), 10, (0, 255, 0), -1)
 
-    def show(self, image, zoom=2.0):
+    def show(self, image, zoom=3.0):
         cv2.imshow("Parameters", cv2.resize(image, (0, 0), fx=zoom, fy=zoom))
 
         # Exit on 'q' key
@@ -245,11 +245,11 @@ class FaceDetector(FaceVisualizer):
         y = nose.y
         return (x, y)
 
-    def draw_force(self, image: np.ndarray, force_xy, zoom=4.0):
+    def draw_force(self, image: np.ndarray, force_xy, zoom=5.0):
         nose_normalized = self.get_position_normalized()
         nose_xy = (int(self.w*nose_normalized[0]), int(self.h*nose_normalized[1]))
         force_point = (nose_xy[0] + int(zoom*force_xy[0]), nose_xy[1] + int(zoom*force_xy[1]))
-        cv2.line(image, nose_xy, force_point, RED_COLOR, 3)
+        cv2.arrowedLine(image, nose_xy, force_point, RED_COLOR, 2, tipLength=0.3)
         return image
 
 

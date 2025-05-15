@@ -44,7 +44,7 @@ class MovingPoint:
         return new_point
 
     def get_force_xy(self):
-        
+        print(f"force={self.force}")
         return self.force
 
     def get_force(self):
@@ -58,10 +58,11 @@ class MovingPoint:
 class Cursor:
     def __init__(self, m=1.0):
         #self.current = pyautogui.position()
-        self.previous_f = (0, 0)
+        self.previous_f = None
         self.previous_time = time.time()
         self.velocity = (0, 0)
         self.m = m
+
     def move(self, fx, fy):
         """
         v(t)=v0+a⋅t
@@ -69,11 +70,9 @@ class Cursor:
         if not self.previous_f:
             self.previous_f = (fx, fy)
             self.previous_time = time.time()
-            return
         
         ax = (fx-self.previous_f[0])/self.m
         ay = (fy-self.previous_f[1])/self.m
-        print(f"ax={ax}, ay={ay}")
         v0x, v0y = self.velocity
         x0, y0 = pyautogui.position()
         now = time.time()
@@ -96,7 +95,7 @@ class MouseController:
         self.prev_face_xy = None
 
         self.click_triggered = False
-        self.input_force = MovingPoint(0, 0)
+        self.input_force = None #MovingPoint(0, 0)
         self.cursor = Cursor(m=.1)
 
 
@@ -137,11 +136,13 @@ class MouseController:
         """Update mouse position based on face position and handle clicks"""
         # Get normalized face position (0-1)
         face_x, face_y = self.get_normalized_face_position(face_landmarks, image_shape)
+        if not self.input_force:
+            self.input_force = MovingPoint(face_x, face_y)
         # print("x", abs(face_x - 0.5), MOUSE_DEADZONE)
         # print("y",abs(face_y - 0.5), MOUSE_DEADZONE)
 
         self.input_force = self.input_force.update_position(face_x, face_y)
-        print(f"force={self.input_force}")
+        #print(f"force={self.input_force}")
 
         fx, fy = self.input_force.get_force_xy()
         self.cursor.move(fx, fy)
