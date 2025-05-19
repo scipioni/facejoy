@@ -1,6 +1,6 @@
 import math
 import time
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import cv2
 import mediapipe as mp
@@ -8,7 +8,7 @@ import numpy as np
 
 from .config import config
 from .mouse import MouseController
-
+from .physics import Force
 
 RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144]  # MediaPipe landmarks for right eye
 LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380]  # MediaPipe landmarks for left eye
@@ -240,7 +240,6 @@ class FaceDetector(FaceVisualizer):
         # Calculate eye aspect ratio
         ear = (vertical1 + vertical2) / (2.0 * horizontal)
         return ear
-    
 
     def get_mouth_state(self) -> Tuple[float, bool]:
         """Calculate mouth openness and determine if mouth is open enough for click"""
@@ -260,16 +259,15 @@ class FaceDetector(FaceVisualizer):
 
         return ratio, is_open
 
-    def get_position_normalized(
-        self
-    ) -> Tuple[float, float]:
+    def get_position_normalized(self) -> Tuple[float, float]:
+        """Calculate the average position of the nose tip"""
         nose = self.face_landmarks.landmark[1]
 
         self.positions.append((nose.x, nose.y))
         if len(self.positions) > config.position_samples:
             self.positions.pop(0)
         return np.mean(self.positions, axis=0)
-        
+
     def draw_force(self, image: np.ndarray, force_xy, zoom=7.0):
         nose_normalized = self.get_position_normalized()
         nose_xy = (int(self.w * nose_normalized[0]), int(self.h * nose_normalized[1]))
@@ -286,9 +284,9 @@ class FaceMouseApp:
 
     def __init__(self):
         self.detector = FaceDetector()
-        # self.visualizer = FaceVisualizer()
-        self.mouse_controller = MouseController()
+        self.mouse_controller = MouseController(m=1.0)
         self.cap = cv2.VideoCapture(0)
+        self.force: Force = None
 
     def run(self):
         """Run the main application loop"""
@@ -300,19 +298,25 @@ class FaceMouseApp:
 
                 # crop image in center
                 image = self.crop_and_filter(image)
-                #h, w = image.shape[:2]
+                # h, w = image.shape[:2]
                 face_landmarks = self.detector.detect(image)
                 image_out = np.zeros_like(image)
 
                 if face_landmarks:
                     image_out = self.detector.draw(image_out, face_landmarks)
 
-                    face_x, face_y = self.detector.get_position_normalized() # from 0 to 1
+                    face_x, face_y = (
+                        self.detector.get_position_normalized()
+                    )  # from 0 to 1
+
+                    if not self.force:
+                        self.force = Force(face_x, face_y)
+                    self.force = self.force.update(face_x, face_y)
+                    self.detector.draw_force(image_out, self.force.get_force_xy())
+
+
                     self.mouse_controller.update_mouse(
-                        face_x, face_y, click=self.detector.left_blink
-                    )
-                    self.detector.draw_force(
-                        image_out, self.mouse_controller.input_force.force
+                        self.force.get_force_xy(), click=self.detector.left_blink
                     )
                 if not self.detector.show(image_out):
                     break
@@ -335,7 +339,7 @@ class FaceMouseApp:
         image = cv2.flip(image, 1)
 
         # fast blur to reduce noise
-        #image = cv2.GaussianBlur(image, (3, 3), 0)
+        # image = cv2.GaussianBlur(image, (3, 3), 0)
         return image
         image = cv2.bilateralFilter(
             image, d=9, sigmaColor=75, sigmaSpace=75

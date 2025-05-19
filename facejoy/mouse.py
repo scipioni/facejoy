@@ -10,48 +10,6 @@ MOUSE_DEADZONE = 0.13  # Minimal movement required to move mouse
 SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
 
 
-class MovingPoint:
-    def __init__(self, x=0, y=0, prev_point=None):
-        self.x = x
-        self.y = y
-        self.timestamp = time.time()
-        self.prev_point = prev_point
-        self.force = self._calculate_force()
-
-    def _calculate_force(self):
-        """
-        force is velocity in pixels per second
-        """
-        if self.prev_point is None:
-            return (0, 0)
-
-        delta_time = time.time() - self.prev_point.timestamp
-        if not delta_time:
-            return (0, 0)  # Avoid division by zer
-
-        vx = round(100*(self.x - self.prev_point.x) / delta_time)
-        vy = round(100*(self.y - self.prev_point.y) / delta_time)
-
-        return (vx, vy)
-
-    def update_position(self, new_x, new_y, mean=10):
-        #new_x = new_x / mean + (mean - 1) * self.x / mean
-        #new_y = new_y / mean + (mean - 1) * self.y / mean
-
-        new_point = MovingPoint(new_x, new_y, self)
-
-        return new_point
-
-    def get_force_xy(self):
-        print(f"force={self.force}")
-        return self.force
-
-    def get_force(self):
-        fx, fy = self.force
-        return int(round(100*math.sqrt(fx**2 + fy**2)))
-
-    def __repr__(self):
-        return f"MovingPoint(x={self.x}, y={self.y}, force={self.get_force()} force_xy={self.force})"
 
 
 class Cursor:
@@ -89,25 +47,55 @@ class Cursor:
 class MouseController:
     """Controls mouse movement based on face position and mouth state"""
 
-    def __init__(self):
+    def __init__(self, m=1.0):
         self.prev_mouse_pos = None
         self.prev_face_xy = None
 
-        self.click_triggered = False
-        self.input_force = None #MovingPoint(0, 0)
-        self.cursor = Cursor(m=.1)
+        #self.click_triggered = False
+        #self.input_force = None #MovingPoint(0, 0)
+        #self.cursor = Cursor(m=.1)
 
+        self.previous_force = None
+        self.previous_time = time.time()
+        self.previous_velocity = (0, 0)
+        self.m = m
+        self.k = 0.5
 
-    def update_mouse(self, face_x, face_y, click=False):
+    def update_mouse(self, force_xy, click=False):
         """Update mouse position based on face position and handle clicks"""
-        if not self.input_force:
-            self.input_force = MovingPoint(face_x, face_y)
+        #if not self.input_force:
+        #    self.input_force = Force(face_x, face_y)
 
-        self.input_force = self.input_force.update_position(face_x, face_y)
+        #self.input_force = self.input_force.update_position(face_x, face_y)
         #print(f"force={self.input_force}")
 
-        fx, fy = self.input_force.get_force_xy()
-        self.cursor.move(fx, fy)
+        #fx, fy = self.input_force.get_force_xy()
+        #self.cursor.move(fx, fy)
+        force_x, force_y = force_xy
+        if not self.previous_force:
+            self.previous_force = (force_x, force_y)
+            self.previous_time = time.time()
+
+        x0, y0 = pyautogui.position()
+        now = time.time()
+        delta_t = now - self.previous_time
+
+        v0x, v0y = self.previous_velocity
+
+        # s(t) = s₀ + v₀ * t + (1/2) * a * t²
+
+        ax = force_x/self.m
+        ay = force_y/self.m
+
+        resistenza_x = -v0x*self.k
+        resistenza_y = -v0y*self.k
+
+        vx = v0x + (force_x+resistenza_x) * delta_t
+        vy = v0y + (force_y+resistenza_y) * delta_t
+
+        self.previous_velocity = (vx, vy)
+        self.previous_time = now
+        print(f"vx={vx:.2f}, vy={vy:.2f}")
 
 
         # # print(self.point)
