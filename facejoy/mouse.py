@@ -1,8 +1,10 @@
 import math
 import time
 from typing import List, Optional, Tuple
-
+import logging
 import pyautogui
+
+from .config import config
 
 MOUSE_SMOOTHING = 0.1  # Lower is smoother
 MOUSE_SCALE = 1.0  # How much to scale face movement to mouse movement
@@ -12,34 +14,34 @@ SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
 
 
 
-class Cursor:
-    def __init__(self, m=1.0):
-        #self.current = pyautogui.position()
-        self.previous_f = None
-        self.previous_time = time.time()
-        self.velocity = (0, 0)
-        self.m = m
+# class Cursor:
+#     def __init__(self, m=1.0):
+#         #self.current = pyautogui.position()
+#         self.previous_f = None
+#         self.previous_time = time.time()
+#         self.velocity = (0, 0)
+#         self.m = m
 
-    def move(self, fx, fy):
-        """
-        v(t)=v0+a⋅t
-        """
-        if not self.previous_f:
-            self.previous_f = (fx, fy)
-            self.previous_time = time.time()
+#     def move(self, fx, fy):
+#         """
+#         v(t)=v0+a⋅t
+#         """
+#         if not self.previous_f:
+#             self.previous_f = (fx, fy)
+#             self.previous_time = time.time()
         
-        ax = (fx-self.previous_f[0])/self.m
-        ay = (fy-self.previous_f[1])/self.m
-        v0x, v0y = self.velocity
-        x0, y0 = pyautogui.position()
-        now = time.time()
-        delta_time = now - self.previous_time
-        x = x0 + v0x * delta_time + ax * delta_time**2  / 2
-        y = y0 + v0y * delta_time + ay * delta_time**2  / 2
-        #pyautogui.moveTo(x, y, duration=0.0, logScreenshot=False, _pause=False)
-        self.previous_time = now
-        self.velocity = (v0x+ax*delta_time, v0y+ay*delta_time)
-        self.previous_f = (fx, fy)
+#         ax = (fx-self.previous_f[0])/self.m
+#         ay = (fy-self.previous_f[1])/self.m
+#         v0x, v0y = self.velocity
+#         x0, y0 = pyautogui.position()
+#         now = time.time()
+#         delta_time = now - self.previous_time
+#         x = x0 + v0x * delta_time + ax * delta_time**2  / 2
+#         y = y0 + v0y * delta_time + ay * delta_time**2  / 2
+#         #pyautogui.moveTo(x, y, duration=0.0, logScreenshot=False, _pause=False)
+#         self.previous_time = now
+#         self.velocity = (v0x+ax*delta_time, v0y+ay*delta_time)
+#         self.previous_f = (fx, fy)
 
 
 
@@ -47,7 +49,7 @@ class Cursor:
 class MouseController:
     """Controls mouse movement based on face position and mouth state"""
 
-    def __init__(self, m=1.0):
+    def __init__(self):
         self.prev_mouse_pos = None
         self.prev_face_xy = None
 
@@ -58,11 +60,13 @@ class MouseController:
         self.previous_force = None
         self.previous_time = time.time()
         self.previous_velocity = (0, 0)
-        self.m = m
-        self.k = 0.5
 
-    def update_mouse(self, force_xy, click=False):
-        """Update mouse position based on face position and handle clicks"""
+    def update_mouse(self, force_xy, click=False, limit=99.):
+        """Update mouse position based on face position and handle clicks
+        
+        V(t) = V0 + a·t 
+        S(t) = ½·a·t2 + V0·t + S0.
+        """
         #if not self.input_force:
         #    self.input_force = Force(face_x, face_y)
 
@@ -72,6 +76,12 @@ class MouseController:
         #fx, fy = self.input_force.get_force_xy()
         #self.cursor.move(fx, fy)
         force_x, force_y = force_xy
+
+        if not (-limit <= force_x <= limit):
+            force_x = 0.
+        if not (-limit <= force_y <= limit):
+            force_y = 0.
+
         if not self.previous_force:
             self.previous_force = (force_x, force_y)
             self.previous_time = time.time()
@@ -83,19 +93,30 @@ class MouseController:
         v0x, v0y = self.previous_velocity
 
         # s(t) = s₀ + v₀ * t + (1/2) * a * t²
+        resistenza_x = -v0x*config.k1
+        resistenza_y = -v0y*config.k1
 
-        ax = force_x/self.m
-        ay = force_y/self.m
+        ax = (force_x+resistenza_x)/config.m
+        ay = (force_y+resistenza_y)/config.m
 
-        resistenza_x = -v0x*self.k
-        resistenza_y = -v0y*self.k
 
-        vx = v0x + (force_x+resistenza_x) * delta_t
-        vy = v0y + (force_y+resistenza_y) * delta_t
+        vx = v0x + ax * delta_t
+        vy = v0y + ay * delta_t
+        
+        delta_x = config.k2*(v0x * delta_t + ax * delta_t**2  / 2.)
+        delta_y = config.k2*(v0y * delta_t + ay * delta_t**2  / 2.)
+
+        x = x0 + int(round(delta_x))
+        y = y0 + int(round(delta_y))
 
         self.previous_velocity = (vx, vy)
         self.previous_time = now
-        print(f"vx={vx:.2f}, vy={vy:.2f}")
+        logging.debug(f"x={x} y={y} vx={vx:.2f}, vy={vy:.2f}")
+
+        #return
+        pyautogui.moveTo(
+            x, y, duration=0.0, logScreenshot=False, _pause=False
+        )
 
 
         # # print(self.point)

@@ -5,6 +5,7 @@ from typing import Optional, Tuple
 import cv2
 import mediapipe as mp
 import numpy as np
+import logging
 
 from .config import config
 from .mouse import MouseController
@@ -284,7 +285,7 @@ class FaceMouseApp:
 
     def __init__(self):
         self.detector = FaceDetector()
-        self.mouse_controller = MouseController(m=1.0)
+        self.mouse_controller = MouseController()
         self.cap = cv2.VideoCapture(0)
         self.force: Force = None
 
@@ -312,12 +313,13 @@ class FaceMouseApp:
                     if not self.force:
                         self.force = Force(face_x, face_y)
                     self.force = self.force.update(face_x, face_y)
+                    logging.debug(f"force={self.force}")
                     self.detector.draw_force(image_out, self.force.get_force_xy())
 
-
-                    self.mouse_controller.update_mouse(
-                        self.force.get_force_xy(), click=self.detector.left_blink
-                    )
+                    if config.mouse:
+                        self.mouse_controller.update_mouse(
+                            self.force.get_force_xy(), click=self.detector.left_blink
+                        )
                 if not self.detector.show(image_out):
                     break
 

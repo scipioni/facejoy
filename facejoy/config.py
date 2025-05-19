@@ -1,5 +1,5 @@
 import argparse
-
+import logging
 import configargparse
 
 _config = None
@@ -28,6 +28,7 @@ def get_config() -> argparse.Namespace:
 
     # parser.add_argument("files", nargs="*", default=[], help="list of documents")
     parser.add_argument("--debug", action="store_true", default=False, help="debug")
+    parser.add_argument("--mouse", action="store_true", default=False, help="mouse")
     parser.add_argument(
         "--position-samples",
         default=25,
@@ -36,11 +37,32 @@ def get_config() -> argparse.Namespace:
     )
     parser.add_argument(
         "--mouth-open-threshold",
-        default=.4,
+        default=0.4,
         type=float,
         help="Mouth open threshold for click detection",
     )
+    parser.add_argument(
+        "-m",
+        default=.005,
+        type=float,
+        help="mass",
+    )
+    parser.add_argument(
+        "-k1",
+        default=0.005,
+        type=float,
+        help="resistance coefficient",
+    )
+    parser.add_argument(
+        "-k2",
+        default=5,
+        type=float,
+        help="speed",
+    )
     _config, _ = parser.parse_known_args()
+
+    if _config.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     return _config
 

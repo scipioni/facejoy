@@ -20,9 +20,9 @@ class Force:
         delta_time = time.time() - self.prev_point.timestamp
         if not delta_time:
             return (0, 0)  # Avoid division by zero
-
-        fx = round(100 * (self.x - self.prev_point.x) / delta_time)
-        fy = round(100 * (self.y - self.prev_point.y) / delta_time)
+        print(self.x,self.prev_point.x)
+        fx = round(30 * (self.x - self.prev_point.x) / delta_time)
+        fy = round(30 * (self.y - self.prev_point.y) / delta_time)
 
         return (fx, fy)
 
@@ -39,7 +39,8 @@ class Force:
 
     def get_force(self):
         fx, fy = self.force
-        return int(round(100 * math.sqrt(fx**2 + fy**2)))
+        return int(round(1 * math.sqrt(fx**2 + fy**2)))
 
     def __repr__(self):
-        return f"Force: x={self.x}, y={self.y}, force={self.get_force()}"
+        fx, fy = self.force
+        return f"Force: x={fx}, y={fy}, module={self.get_force()}"
