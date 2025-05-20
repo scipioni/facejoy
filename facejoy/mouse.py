@@ -13,39 +13,6 @@ SCREEN_WIDTH, SCREEN_HEIGHT = pyautogui.size()
 
 
 
-
-# class Cursor:
-#     def __init__(self, m=1.0):
-#         #self.current = pyautogui.position()
-#         self.previous_f = None
-#         self.previous_time = time.time()
-#         self.velocity = (0, 0)
-#         self.m = m
-
-#     def move(self, fx, fy):
-#         """
-#         v(t)=v0+a⋅t
-#         """
-#         if not self.previous_f:
-#             self.previous_f = (fx, fy)
-#             self.previous_time = time.time()
-        
-#         ax = (fx-self.previous_f[0])/self.m
-#         ay = (fy-self.previous_f[1])/self.m
-#         v0x, v0y = self.velocity
-#         x0, y0 = pyautogui.position()
-#         now = time.time()
-#         delta_time = now - self.previous_time
-#         x = x0 + v0x * delta_time + ax * delta_time**2  / 2
-#         y = y0 + v0y * delta_time + ay * delta_time**2  / 2
-#         #pyautogui.moveTo(x, y, duration=0.0, logScreenshot=False, _pause=False)
-#         self.previous_time = now
-#         self.velocity = (v0x+ax*delta_time, v0y+ay*delta_time)
-#         self.previous_f = (fx, fy)
-
-
-
-
 class MouseController:
     """Controls mouse movement based on face position and mouth state"""
 
@@ -60,6 +27,12 @@ class MouseController:
         self.previous_force = None
         self.previous_time = time.time()
         self.previous_velocity = (0, 0)
+
+        self.x0, self.y0 = pyautogui.position()
+
+        self.screen_width, self.screen_height = pyautogui.size()
+        logging.info(f"Screen Resolution: {self.screen_width}x{self.screen_height}")
+
 
     def update_mouse(self, force_xy, click=False, limit=99.):
         """Update mouse position based on face position and handle clicks
@@ -86,7 +59,7 @@ class MouseController:
             self.previous_force = (force_x, force_y)
             self.previous_time = time.time()
 
-        x0, y0 = pyautogui.position()
+        self.x0, self.y0 = pyautogui.position()
         now = time.time()
         delta_t = now - self.previous_time
 
@@ -102,21 +75,25 @@ class MouseController:
 
         vx = v0x + ax * delta_t
         vy = v0y + ay * delta_t
-        
-        delta_x = config.k2*(v0x * delta_t + ax * delta_t**2  / 2.)
-        delta_y = config.k2*(v0y * delta_t + ay * delta_t**2  / 2.)
 
-        x = x0 + int(round(delta_x))
-        y = y0 + int(round(delta_y))
+        
+        k3 = 200
+        delta_x = (config.k2 if abs(v0x) > k3 else 1)*(v0x * delta_t + ax * delta_t**2  / 2.)
+        delta_y = (config.k2 if abs(v0y) > k3 else 1)*(v0y * delta_t + ay * delta_t**2  / 2.)
+
+        x = self.x0 + int(round(delta_x))
+        y = self.y0 + int(round(delta_y))
 
         self.previous_velocity = (vx, vy)
         self.previous_time = now
         logging.debug(f"x={x} y={y} vx={vx:.2f}, vy={vy:.2f}")
 
         #return
-        pyautogui.moveTo(
-            x, y, duration=0.0, logScreenshot=False, _pause=False
-        )
+        if 1 <= x <= self.screen_width and 1 <= self.screen_height <= self.screen_height:
+            pyautogui.moveTo(
+                x, y, duration=delta_t, logScreenshot=False, _pause=False
+            )
+            self.x0, self.y0 = x,y
 
 
         # # print(self.point)

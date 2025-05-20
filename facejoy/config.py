@@ -63,6 +63,9 @@ def get_config() -> argparse.Namespace:
 
     if _config.debug:
         logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
+    
 
     return _config
 
