@@ -8,3 +8,8 @@ pip install uv
 
 uv sync --active --extra dev
 ```
+
+
+## TODO 
+
+- https://github.com/Alkaid-Benetnash/EmuBTHID
